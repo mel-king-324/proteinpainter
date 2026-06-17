@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Protein Painter — coloring scripts for PyMOL & ChimeraX</title>
+<style>
+  :root {
+    --ink: #14181d;
+    --paper: #efe9d6;
+    --panel: #fbf9f4;
+    --line: #d8d0bf;
+    --line-strong: #b7ad95;
+    --accent: #1d6f6b;
+    --accent-soft: #d6e7e4;
+    --muted: #6f6a5d;
+    --danger: #b4452f;
+    --shadow: 0 1px 0 rgba(20,24,29,.04), 0 8px 24px -16px rgba(20,24,29,.4);
+    --mono: "SFMono-Regular", "JetBrains Mono", "Menlo", "Consolas", monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Charter", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    padding: 30px 32px 22px;
+    border-bottom: 1.5px solid var(--ink);
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .title { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  h1 {
+    font-size: 28px;
+    margin: 0;
+    letter-spacing: -0.4px;
+    font-weight: 600;
+  }
+  .sub {
+    font-family: var(--mono);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 32px 64px; }
+  .lead {
+    max-width: 60ch;
+    margin: 26px 0 8px;
+    color: var(--muted);
+    font-size: 15.5px;
+  }
+
+  /* Sequence track */
+  .track-section { margin-top: 30px; }
+  .track-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 10px; gap: 12px; flex-wrap: wrap;
+  }
+  .track-head h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 1.6px;
+    font-family: var(--mono); font-weight: 600; margin: 0; color: var(--ink);
+  }
+  .len-control { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  .len-control input {
+    width: 84px; font-family: var(--mono); font-size: 13px;
+    border: 1px solid var(--line-strong); background: var(--panel);
+    padding: 5px 8px; border-radius: 5px; color: var(--ink);
+  }
+  .track {
+    position: relative; height: 56px; border: 1.5px solid var(--ink);
+    border-radius: 7px; background:
+      repeating-linear-gradient(90deg, transparent, transparent 49px, rgba(20,24,29,.06) 49px, rgba(20,24,29,.06) 50px),
+      var(--panel);
+    overflow: hidden;
+  }
+  .seg {
+    position: absolute; top: 0; bottom: 0;
+    border-right: 1px solid rgba(20,24,29,.25);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 10.5px; color: rgba(0,0,0,.62);
+    cursor: pointer; overflow: hidden; white-space: nowrap;
+    transition: filter .12s ease;
+  }
+  .seg:hover { filter: brightness(.92) saturate(1.1); }
+  .seg.sel { box-shadow: inset 0 0 0 2.5px var(--ink); }
+  .ruler { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  /* Domain editor */
+  .domains { margin-top: 30px; }
+  .domains h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 1.6px;
+    font-family: var(--mono); font-weight: 600; margin: 0 0 12px; color: var(--ink);
+  }
+  .dom-row {
+    display: grid;
+    grid-template-columns: 56px 1.3fr 0.7fr 1.2fr 2.1fr 64px 30px;
+    gap: 10px; align-items: center;
+    padding: 9px 10px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 7px; margin-bottom: 8px;
+    box-shadow: var(--shadow);
+  }
+  .dom-row.dragging { opacity: .4; }
+  .dom-row.drop-above { box-shadow: inset 0 3px 0 var(--accent), var(--shadow); }
+  .dom-row.drop-below { box-shadow: inset 0 -3px 0 var(--accent), var(--shadow); }
+  .drag-handle {
+    cursor: grab; color: var(--line-strong); font-size: 15px;
+    user-select: none; line-height: 1; padding: 0 2px;
+  }
+  .drag-handle:active { cursor: grabbing; }
+  .swatch-cell { display: flex; align-items: center; gap: 6px; }
+  .swatch {
+    width: 32px; height: 32px; border-radius: 6px; cursor: pointer;
+    border: 1.5px solid rgba(20,24,29,.25); padding: 0; position: relative;
+  }
+  .swatch input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .dom-row input[type=text] {
+    font-family: var(--mono); font-size: 13px; width: 100%;
+    border: 1px solid var(--line-strong); background: #fff;
+    padding: 6px 8px; border-radius: 5px; color: var(--ink);
+  }
+  .dom-row input.bad { border-color: var(--danger); background: #fbeae6; }
+  .hex {
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    text-align: center; text-transform: uppercase;
+  }
+  .del {
+    border: none; background: none; cursor: pointer; font-size: 18px;
+    color: var(--line-strong); line-height: 1; padding: 4px;
+  }
+  .del:hover { color: var(--danger); }
+  .add-btn {
+    margin-top: 4px; font-family: var(--mono); font-size: 12px;
+    text-transform: uppercase; letter-spacing: 1px;
+    background: none; border: 1.5px dashed var(--line-strong);
+    color: var(--muted); padding: 9px 14px; border-radius: 7px; cursor: pointer; width: 100%;
+  }
+  .add-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .field-labels {
+    display: grid; grid-template-columns: 56px 1.3fr 0.7fr 1.2fr 2.1fr 64px 30px;
+    gap: 10px; padding: 0 10px 4px;
+    font-family: var(--mono); font-size: 11px; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--muted);
+  }
+
+  /* Controls bar */
+  .controls {
+    display: flex; gap: 22px; flex-wrap: wrap; align-items: center;
+    margin-top: 26px; padding: 16px 0; border-top: 1px solid var(--line);
+  }
+  .ctl { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12.5px; }
+  .ctl label { color: var(--muted); text-transform: uppercase; letter-spacing: .8px; font-size: 12px; }
+  .ctl input {
+    font-family: var(--mono); font-size: 13px; width: 90px;
+    border: 1px solid var(--line-strong); background: var(--panel);
+    padding: 5px 8px; border-radius: 5px; color: var(--ink);
+  }
+
+  /* Output */
+  .out-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 14px; }
+  @media (max-width: 900px) { .out-grid { grid-template-columns: 1fr; } .dom-row, .field-labels { grid-template-columns: 48px 1.1fr 0.6fr 1fr 1.7fr 54px 26px; } }
+  .domains-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .domains-head h2 { margin: 0; }
+  .tb-sm { padding: 6px 11px; font-size: 11px; }
+  .ctl-note { color: var(--muted); font-family: var(--mono); font-size: 12.5px; }
+  .track-multi { margin-bottom: 8px; }
+  .track-row { width: 100%; }
+  .track-label { font-family: var(--mono); font-size: 11.5px; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; margin-bottom: 3px; }
+  .track-controls { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .export-group { display: inline-flex; gap: 6px; }
+  .scale-toggle { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 6px; overflow: hidden; }
+  .scale-opt {
+    font-family: var(--mono); font-size: 12px; letter-spacing: .5px;
+    background: var(--panel); border: none; color: var(--muted);
+    padding: 5px 11px; cursor: pointer; border-right: 1px solid var(--line-strong);
+  }
+  .scale-opt:last-child { border-right: none; }
+  .scale-opt.active { background: #4a4a46; color: var(--paper); }
+  .scale-opt:not(.active):hover { color: var(--accent); }
+  .radicand { text-decoration: overline; }
+  .out-card { border: 1.5px solid var(--ink); border-radius: 8px; overflow: hidden; background: var(--ink); }
+  .out-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 9px 14px; background: var(--ink); color: var(--paper);
+  }
+  .out-head .name { font-family: var(--mono); font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; }
+  .copy {
+    font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+    background: var(--accent); color: #fff; border: none; padding: 5px 12px;
+    border-radius: 5px; cursor: pointer;
+  }
+  .copy:hover { background: #258580; }
+  .copy.done { background: #4f8a3d; }
+  pre {
+    margin: 0; padding: 14px; background: #1a1f25; color: #d6dce2;
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.65;
+    overflow-x: auto; max-height: 420px;
+  }
+  pre .cmd { color: #9fd0cc; }
+  pre .arg { color: #e8c98a; }
+  pre .com { color: #6b7884; font-style: italic; }
+  footer { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); max-width: 64ch; }
+  code { font-family: var(--mono); font-size: .92em; background: rgba(20,24,29,.06); padding: 1px 5px; border-radius: 4px; }
+
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 24px; }
+  .tb {
+    font-family: var(--mono); font-size: 12px; letter-spacing: .5px;
+    background: var(--panel); border: 1.5px solid var(--line-strong);
+    color: var(--ink); padding: 8px 14px; border-radius: 7px; cursor: pointer;
+    box-shadow: var(--shadow);
+  }
+  .tb:hover { border-color: var(--accent); color: var(--accent); }
+  .tb-danger:hover { border-color: var(--danger); color: var(--danger); }
+
+  .banner {
+    margin-top: 18px; padding: 11px 14px; border-radius: 7px;
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.6;
+    border: 1px solid var(--line-strong); background: var(--panel);
+  }
+  .banner.ok { border-color: #6ba35a; background: #eef5ea; color: #2f5523; }
+  .banner.warn { border-color: #d39b3a; background: #fbf3e2; color: #7a5410; }
+  .banner.err { border-color: var(--danger); background: #fbeae6; color: #7c2a1b; }
+  .banner b { font-weight: 600; }
+  .banner ul { margin: 6px 0 0; padding-left: 18px; }
+
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(20,24,29,.45);
+    display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 50;
+  }
+  .modal-overlay[hidden] { display: none; }
+  .banner[hidden] { display: none; }
+  .modal {
+    background: var(--paper); border: 1.5px solid var(--ink); border-radius: 10px;
+    max-width: 640px; width: 100%; max-height: 84vh; overflow: hidden; display: flex; flex-direction: column;
+    box-shadow: 0 24px 60px -20px rgba(20,24,29,.6);
+  }
+  .modal-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 18px; border-bottom: 1.5px solid var(--ink);
+    font-family: var(--mono); font-size: 13px; text-transform: uppercase; letter-spacing: 1.4px;
+  }
+  .modal-x { border: none; background: none; font-size: 24px; line-height: 1; cursor: pointer; color: var(--muted); }
+  .modal-x:hover { color: var(--danger); }
+  .modal-body { padding: 18px; overflow-y: auto; }
+  .scheme-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .scheme-tab {
+    font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+    background: none; border: 1px solid var(--line-strong); color: var(--muted);
+    padding: 6px 12px; border-radius: 6px; cursor: pointer;
+  }
+  .scheme-tab.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .scheme-row {
+    display: flex; align-items: center; gap: 12px; padding: 9px 10px;
+    border: 1px solid var(--line); border-radius: 7px; margin-bottom: 8px; cursor: pointer; background: var(--panel);
+  }
+  .scheme-row:hover { border-color: var(--accent); }
+  .scheme-name { font-family: var(--mono); font-size: 12.5px; width: 92px; flex-shrink: 0; }
+  .scheme-bar { display: flex; flex: 1; height: 22px; border-radius: 4px; overflow: hidden; border: 1px solid rgba(20,24,29,.2); }
+  .scheme-bar span { flex: 1; }
+  .modal-actions { display: flex; gap: 10px; margin-top: 8px; }
+  .apply-mode {
+    flex: 1; font-family: var(--mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: .8px;
+    padding: 10px; border: 1.5px solid var(--line-strong); border-radius: 7px; background: var(--panel); cursor: pointer; color: var(--ink);
+  }
+  .apply-mode:hover { border-color: var(--accent); color: var(--accent); }
+  .modal-hint { font-size: 13px; color: var(--muted); margin: 0 0 14px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="title">
+    <h1>Protein Painter</h1>
+    <span class="sub">PyMOL · ChimeraX coloring</span>
+  </div>
+</header>
+
+<div class="wrap">
+  <p class="lead">
+    Lay out colored domains along a chain, pick colors by eye, and read off the coloring
+    commands for both viewers. Discontinuous ranges are written with the right join syntax for
+    each — <code>+</code> for PyMOL, <code>,</code> for ChimeraX.
+  </p>
+
+  <div class="toolbar">
+    <button class="tb" id="saveBtn">↧ Save .json</button>
+    <button class="tb" id="loadBtn">↥ Load .json</button>
+    <button class="tb" id="importBtn">⎘ Read External Script</button>
+    <button class="tb" id="schemeBtn">◐ Color scheme</button>
+    <input type="file" id="loadFile" accept=".json,application/json" hidden>
+    <input type="file" id="importFile" accept=".pml,.cxc,.txt,.cmd" hidden>
+  </div>
+
+  <div class="track-section">
+    <div class="track-head">
+      <h2>Sequence map</h2>
+      <div class="track-controls">
+        <div class="scale-toggle">
+          <button class="scale-opt" id="scaleSqrt" data-mode="sqrt">&radic;<span class="radicand">x</span> scaled</button>
+          <button class="scale-opt" id="scaleLinear" data-mode="linear">linear</button>
+        </div>
+        <div class="export-group">
+          <button class="tb tb-sm" id="exportPng">↧ PNG</button>
+          <button class="tb tb-sm" id="exportSvg">↧ SVG</button>
+        </div>
+        <div class="len-control">
+          <span>length</span>
+          <input id="seqlen" type="number" min="1" value="1440">
+          <span>residues</span>
+        </div>
+      </div>
+    </div>
+    <div id="tracks"></div>
+  </div>
+
+  <div class="domains">
+    <div class="domains-head">
+      <h2>Domains</h2>
+      <button class="tb tb-danger tb-sm" id="clearBtn">⌫ Clear table</button>
+    </div>
+    <div class="field-labels">
+      <span></span><span>Domain (display only)</span><span>Chain(s)</span><span>Color name</span><span>Residue ranges</span><span>Hex</span><span></span>
+    </div>
+    <div id="domlist"></div>
+    <button class="add-btn" id="addbtn">+ Add domain</button>
+  </div>
+
+  <div class="controls">
+    <div class="ctl"><label>Object Name</label><input id="objname" type="text" value="m01"></div>
+  </div>
+
+  <div class="out-grid">
+    <div class="out-card">
+      <div class="out-head"><span class="name">PyMOL · .pml</span><button class="copy" data-target="pml">Copy</button></div>
+      <pre id="pml"></pre>
+    </div>
+    <div class="out-card">
+      <div class="out-head"><span class="name">ChimeraX · .cxc</span><button class="copy" data-target="cxc">Copy</button></div>
+      <pre id="cxc"></pre>
+    </div>
+  </div>
+
+  <div id="banner" class="banner" hidden></div>
+</div>
+
+<div id="modal" class="modal-overlay" hidden>
+  <div class="modal">
+    <div class="modal-head">
+      <span id="modalTitle">Color scheme</span>
+      <button class="modal-x" id="modalX">×</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<script>
+const PALETTE = [
+  ["Gold","#FFD700"],["Royal","#4169E1"],["Sky","#87CEFA"],["Pink","#DB7093"],
+  ["Tomato","#FF6347"],["Teal","#008B8B"],["Wheat","#F5DEB3"]
+];
+let domains = [
+  { label:"WED",   chain:"A", name:"Gold",    color:"#FFD700", ranges:"1-114, 318-342, 665-712, 821-937" },
+  { label:"REC1",  chain:"A", name:"Royal",   color:"#4169E1", ranges:"115-317" },
+  { label:"REC2",  chain:"A", name:"Sky",     color:"#87CEFA", ranges:"343-664" },
+  { label:"PID",   chain:"A", name:"Pink",    color:"#DB7093", ranges:"713-820" },
+  { label:"RuvC",  chain:"A", name:"Tomato",  color:"#FF6347", ranges:"938-1030, 1151-1319, 1353-1440" },
+  { label:"INS",   chain:"A", name:"Teal",    color:"#008B8B", ranges:"1031-1150" },
+  { label:"ZR",    chain:"A", name:"Wheat",   color:"#F5DEB3", ranges:"1320-1352" },
+  { label:"crRNA", chain:"B", name:"Magenta", color:"#d10198", ranges:"1-35" },
+];
+let selected = -1;
+
+const $ = id => document.getElementById(id);
+
+// ---- parsing ----
+function parseRanges(str){
+  // returns {spans:[[lo,hi],...], ok:bool}
+  const parts = str.split(/[,+]/).map(s=>s.trim()).filter(Boolean);
+  const spans = []; let ok = parts.length>0;
+  for(const p of parts){
+    const m = p.match(/^(\d+)\s*-\s*(\d+)$/);
+    const s = p.match(/^(\d+)$/);
+    if(m){ const lo=+m[1], hi=+m[2]; if(lo>hi){ok=false;} spans.push([lo,hi]); }
+    else if(s){ spans.push([+s[1],+s[1]]); }
+    else { ok=false; }
+  }
+  return {spans, ok};
+}
+function sanitizeName(n, i){
+  let s = (n||"").trim().toLowerCase().replace(/[^a-z0-9_]/g,"_").replace(/^_+|_+$/g,"");
+  if(!s) s = "dom"+(i+1);
+  if(/^[0-9]/.test(s)) s = "c_"+s;
+  return s;
+}
+function hexToRGB01(hex){
+  const h = hex.replace("#","");
+  const r=parseInt(h.slice(0,2),16)/255, g=parseInt(h.slice(2,4),16)/255, b=parseInt(h.slice(4,6),16)/255;
+  return [r,g,b].map(v=>v.toFixed(3)).join(", ");
+}
+
+// ---- render track ----
+let scaleMode = "sqrt";   // "sqrt" | "linear"
+function renderTrack(){
+  const globalLen = Math.max(1, +$("seqlen").value||1);
+  const host = $("tracks"); host.innerHTML="";
+  // group domains (with their original index) by chain, preserving first-seen chain order
+  const order = [];
+  const byChain = {};
+  domains.forEach((d,di)=>{
+    const ch = (d.chain||"A").trim() || "A";
+    parseChains(ch).forEach(c=>{
+      if(!byChain[c]){ byChain[c]=[]; order.push(c); }
+      byChain[c].push(di);
+    });
+  });
+  if(order.length===0){ order.push("A"); byChain["A"]=[]; }
+
+  // each chain's own extent = highest residue it uses (capped at the global reference length)
+  const extent = {};
+  order.forEach(ch=>{
+    let mx = 0;
+    byChain[ch].forEach(di=>{
+      parseRanges(domains[di].ranges).spans.forEach(([,hi])=> { if(hi>mx) mx=hi; });
+    });
+    extent[ch] = Math.min(globalLen, Math.max(1, mx || globalLen));
+  });
+
+  // track-box width as a fraction of the container, scaled against the global length
+  const widthFrac = ch => {
+    const e = extent[ch];
+    if(scaleMode==="linear") return e/globalLen;
+    return Math.sqrt(e)/Math.sqrt(globalLen);
+  };
+
+  order.forEach(ch=>{
+    const chainLen = extent[ch];
+    const wrap = document.createElement("div");
+    wrap.className="track-multi";
+    const lab = document.createElement("div");
+    lab.className="track-label";
+    lab.textContent = "chain "+ch+" · "+chainLen+" aa";
+    wrap.appendChild(lab);
+
+    // outer row spans full width; inner box is the scaled track
+    const rowBox = document.createElement("div");
+    rowBox.className="track-row";
+    const track = document.createElement("div");
+    track.className="track";
+    track.style.width = (widthFrac(ch)*100).toFixed(2)+"%";
+
+    byChain[ch].forEach(di=>{
+      const d = domains[di];
+      parseRanges(d.ranges).spans.forEach(([lo,hi])=>{
+        const seg = document.createElement("div");
+        seg.className = "seg"+(di===selected?" sel":"");
+        // positions are LINEAR within the chain's own extent, so boundaries stay accurate
+        const left = ((lo-1)/chainLen)*100, w = ((hi-lo+1)/chainLen)*100;
+        seg.style.left = left+"%"; seg.style.width = w+"%";
+        seg.style.background = d.color;
+        seg.style.color = luminance(d.color)>0.55 ? "rgba(0,0,0,.6)" : "rgba(255,255,255,.85)";
+        if(w>6) seg.textContent = lo+"–"+hi;
+        seg.title = (d.label||d.name||"domain")+" ("+ch+"): "+lo+"–"+hi;
+        seg.onclick = ()=>{ selected = di; render(); };
+        track.appendChild(seg);
+      });
+    });
+    rowBox.appendChild(track);
+    wrap.appendChild(rowBox);
+
+    // ruler matches the scaled track width and shows this chain's own residue numbers
+    const ruler = document.createElement("div");
+    ruler.className="ruler";
+    ruler.style.width = (widthFrac(ch)*100).toFixed(2)+"%";
+    for(let i=0;i<=4;i++){ const s=document.createElement("span"); s.textContent=Math.round(i/4*chainLen)||1; ruler.appendChild(s); }
+    wrap.appendChild(ruler);
+    host.appendChild(wrap);
+  });
+}
+
+// ---- compute chain layout (shared by display and export) ----
+function chainLayout(){
+  const globalLen = Math.max(1, +$("seqlen").value||1);
+  const order=[], byChain={};
+  domains.forEach((d,di)=>{
+    parseChains((d.chain||"A").trim()||"A").forEach(c=>{
+      if(!byChain[c]){ byChain[c]=[]; order.push(c); }
+      byChain[c].push(di);
+    });
+  });
+  if(order.length===0){ order.push("A"); byChain["A"]=[]; }
+  const extent={};
+  order.forEach(ch=>{
+    let mx=0; byChain[ch].forEach(di=> parseRanges(domains[di].ranges).spans.forEach(([,hi])=>{ if(hi>mx)mx=hi; }));
+    extent[ch]=Math.min(globalLen, Math.max(1, mx||globalLen));
+  });
+  const widthFrac = ch => scaleMode==="linear" ? extent[ch]/globalLen : Math.sqrt(extent[ch])/Math.sqrt(globalLen);
+  return { globalLen, order, byChain, extent, widthFrac };
+}
+
+// ---- build a standalone SVG of the sequence map ----
+function buildMapSVG(){
+  const { order, byChain, extent, widthFrac } = chainLayout();
+  const W = 1000, pad = 12, trackH = 46, labelH = 18, rulerH = 16, gap = 18;
+  const innerW = W - pad*2;
+  const rowH = labelH + trackH + rulerH + gap;
+  const H = pad*2 + order.length*rowH;
+  const esc = s => (""+s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const font = "font-family='Helvetica, Arial, sans-serif'";
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
+  let y = pad;
+  order.forEach(ch=>{
+    const chainLen = extent[ch];
+    const tw = Math.max(2, widthFrac(ch)*innerW);
+    // label
+    svg += `<text x="${pad}" y="${y+12}" ${font} font-size="11" fill="#6f6a5d" letter-spacing="0.5">chain ${esc(ch)} · ${chainLen} aa</text>`;
+    const ty = y + labelH;
+    // track outline (transparent interior — unpainted gaps show through)
+    svg += `<rect x="${pad}" y="${ty}" width="${tw.toFixed(2)}" height="${trackH}" fill="none" stroke="#14181d" stroke-width="1.5" rx="6"/>`;
+    // segments (linear within chain)
+    byChain[ch].forEach(di=>{
+      const d = domains[di];
+      parseRanges(d.ranges).spans.forEach(([lo,hi])=>{
+        const sx = pad + ((lo-1)/chainLen)*tw;
+        const sw = ((hi-lo+1)/chainLen)*tw;
+        if(sw<=0) return;
+        svg += `<rect x="${sx.toFixed(2)}" y="${ty}" width="${sw.toFixed(2)}" height="${trackH}" fill="${d.color}"/>`;
+        if(sw>34){
+          const tcol = luminance(d.color)>0.55 ? "rgba(0,0,0,.65)" : "rgba(255,255,255,.9)";
+          svg += `<text x="${(sx+sw/2).toFixed(2)}" y="${ty+trackH/2+4}" ${font} font-size="10.5" fill="${tcol}" text-anchor="middle">${lo}\u2013${hi}</text>`;
+        }
+      });
+    });
+    // re-stroke outline on top so segment edges don't cover the border
+    svg += `<rect x="${pad}" y="${ty}" width="${tw.toFixed(2)}" height="${trackH}" fill="none" stroke="#14181d" stroke-width="1.5" rx="6"/>`;
+    // ruler ticks
+    const ry = ty + trackH + 12;
+    for(let i=0;i<=4;i++){
+      const rx = pad + (i/4)*tw;
+      const val = Math.round(i/4*chainLen)||1;
+      const anchor = i===0 ? "start" : (i===4 ? "end" : "middle");
+      svg += `<text x="${rx.toFixed(2)}" y="${ry}" ${font} font-size="10.5" fill="#6f6a5d" text-anchor="${anchor}">${val}</text>`;
+    }
+    y += rowH;
+  });
+  svg += `</svg>`;
+  return { svg, W, H };
+}
+
+function downloadBlob(blob, filename){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+}
+function mapBasename(){ return (($("objname").value||"sequence_map").trim()||"sequence_map").replace(/[^A-Za-z0-9_\-]/g,"_")+"_map"; }
+
+function exportSVG(){
+  if(!domains.length){ showBanner("warn","Add some domains first — nothing to export."); return; }
+  const { svg } = buildMapSVG();
+  downloadBlob(new Blob([svg],{type:"image/svg+xml"}), mapBasename()+".svg");
+  showBanner("ok","Exported <b>"+mapBasename()+".svg</b> (vector — scales to any size).");
+}
+function exportPNG(scale){
+  if(!domains.length){ showBanner("warn","Add some domains first — nothing to export."); return; }
+  const { svg, W, H } = buildMapSVG();
+  const img = new Image();
+  const blob = new Blob([svg],{type:"image/svg+xml;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  img.onload = ()=>{
+    const cv = document.createElement("canvas");
+    cv.width = W*scale; cv.height = H*scale;
+    const ctx = cv.getContext("2d");
+    ctx.drawImage(img, 0, 0, cv.width, cv.height);
+    URL.revokeObjectURL(url);
+    cv.toBlob(b=>{
+      downloadBlob(b, mapBasename()+"@"+scale+"x.png");
+      showBanner("ok","Exported <b>"+mapBasename()+"@"+scale+"x.png</b> ("+(W*scale)+"\u00d7"+(H*scale)+" px).");
+    },"image/png");
+  };
+  img.onerror = ()=>{ URL.revokeObjectURL(url); showBanner("err","PNG export failed while rendering the image."); };
+  img.src = url;
+}
+
+function luminance(hex){
+  const h=hex.replace("#",""); const r=parseInt(h.slice(0,2),16)/255,g=parseInt(h.slice(2,4),16)/255,b=parseInt(h.slice(4,6),16)/255;
+  return 0.299*r+0.587*g+0.114*b;
+}
+
+// ---- render domain rows ----
+let dragFrom = null;
+function renderRows(){
+  const list = $("domlist"); list.innerHTML="";
+  domains.forEach((d,i)=>{
+    const row = document.createElement("div");
+    row.className="dom-row";
+    row.dataset.i = i;
+    const {ok} = parseRanges(d.ranges);
+    row.innerHTML = `
+      <div class="swatch-cell">
+        <span class="drag-handle" title="drag to reorder">⠿</span>
+        <button class="swatch" style="background:${d.color}">
+          <input type="color" value="${d.color}" data-i="${i}" data-k="color">
+        </button>
+      </div>
+      <input type="text" value="${d.label||''}" data-i="${i}" data-k="label" placeholder="e.g. N-lobe">
+      <input type="text" value="${d.chain||'A'}" data-i="${i}" data-k="chain" placeholder="A">
+      <input type="text" value="${d.name}" data-i="${i}" data-k="name" placeholder="color name">
+      <input type="text" value="${d.ranges}" data-i="${i}" data-k="ranges" class="${ok?'':'bad'}" placeholder="1-100, 150-200">
+      <span class="hex">${d.color.replace('#','')}</span>
+      <button class="del" data-i="${i}" title="remove">×</button>
+    `;
+    // drag only from the handle, but the whole row is the draggable element
+    const handle = row.querySelector(".drag-handle");
+    handle.addEventListener("mousedown", ()=> row.setAttribute("draggable","true"));
+    handle.addEventListener("mouseup", ()=> row.removeAttribute("draggable"));
+    row.addEventListener("dragstart", e=>{
+      dragFrom = i; row.classList.add("dragging");
+      e.dataTransfer.effectAllowed="move";
+      e.dataTransfer.setData("text/plain", String(i));
+    });
+    row.addEventListener("dragend", ()=>{
+      row.removeAttribute("draggable"); row.classList.remove("dragging");
+      list.querySelectorAll(".dom-row").forEach(r=>r.classList.remove("drop-above","drop-below"));
+    });
+    row.addEventListener("dragover", e=>{
+      e.preventDefault();
+      const rect = row.getBoundingClientRect();
+      const below = (e.clientY - rect.top) > rect.height/2;
+      row.classList.toggle("drop-below", below);
+      row.classList.toggle("drop-above", !below);
+    });
+    row.addEventListener("dragleave", ()=> row.classList.remove("drop-above","drop-below"));
+    row.addEventListener("drop", e=>{
+      e.preventDefault();
+      const to = +row.dataset.i;
+      const rect = row.getBoundingClientRect();
+      const below = (e.clientY - rect.top) > rect.height/2;
+      reorder(dragFrom, to, below);
+    });
+    list.appendChild(row);
+  });
+  list.querySelectorAll("input").forEach(inp=>{
+    inp.addEventListener("input", e=>{
+      const i=+e.target.dataset.i, k=e.target.dataset.k;
+      domains[i][k]=e.target.value;
+      // Never rebuild the row list here — that would destroy the field being edited
+      // and drop focus after one character. Update only outputs, the map, and the
+      // two display-only cells (swatch + hex) that mirror the color picker.
+      if(k==="color"){
+        const rowEl = e.target.closest(".dom-row");
+        const sw = rowEl.querySelector(".swatch"); if(sw) sw.style.background = e.target.value;
+        const hx = rowEl.querySelector(".hex"); if(hx) hx.textContent = e.target.value.replace('#','');
+      }
+      if(k==="ranges"){
+        const valid = parseRanges(e.target.value).ok;
+        e.target.classList.toggle("bad", !valid);
+      }
+      renderOutputs();
+      renderTrack();
+    });
+    inp.addEventListener("focus", e=>{ selected=+e.target.dataset.i; renderTrack(); });
+  });
+  list.querySelectorAll(".del").forEach(b=>{
+    b.onclick = e=>{ domains.splice(+e.target.dataset.i,1); if(selected>=domains.length)selected=-1; render(); };
+  });
+}
+function reorder(from, to, below){
+  if(from==null || from===to) return;
+  let target = to + (below?1:0);
+  const [moved] = domains.splice(from,1);
+  if(from < target) target--;          // account for removal shift
+  domains.splice(target,0,moved);
+  selected = target;
+  dragFrom = null;
+  render();
+}
+
+// ---- script generation ----
+function pymolJoin(spans){ return spans.map(([a,b])=>a===b?`${a}`:`${a}-${b}`).join("+"); }
+function chimeraJoin(spans){ return spans.map(([a,b])=>a===b?`${a}`:`${a}-${b}`).join(","); }
+
+function parseChains(str){
+  return (str||"A").split(/[,+\s]+/).map(s=>s.trim()).filter(Boolean);
+}
+function renderOutputs(){
+  const obj = ($("objname").value||"obj").trim();
+
+  // PyMOL
+  let pml = [`<span class="com"># PyMOL — paste into the prompt or run as a .pml script</span>`];
+  const usedNames = {};
+  const colorLines = [];
+  domains.forEach((d,i)=>{
+    let nm = sanitizeName(d.name,i);
+    while(usedNames[nm]) nm = nm+"_";
+    usedNames[nm]=true;
+    const labelNote = d.label ? `   <span class="com"># ${escapeHtml(d.label)}</span>` : "";
+    pml.push(`<span class="cmd">set_color</span> <span class="arg">${nm}</span>, [${hexToRGB01(d.color)}]${labelNote}`);
+    const {spans} = parseRanges(d.ranges);
+    const pymolChain = parseChains(d.chain).join("+");
+    if(spans.length) colorLines.push(`<span class="cmd">color</span> <span class="arg">${nm}</span>, ${obj} and chain ${pymolChain} and resi ${pymolJoin(spans)}`);
+  });
+  pml.push("");
+  pml = pml.concat(colorLines);
+  $("pml").innerHTML = pml.join("\n");
+
+  // ChimeraX — #model/chain spec with inline hex, per-domain chain
+  let cxc = [`<span class="com"># ChimeraX — paste into the command line or run as a .cxc script</span>`];
+  cxc.push(`<span class="com"># replace #1 with your model number if different (use 'info models')</span>`);
+  domains.forEach((d,i)=>{
+    const {spans} = parseRanges(d.ranges);
+    const cxChain = parseChains(d.chain).join(",");
+    const labelNote = d.label ? `   <span class="com"># ${escapeHtml(d.label)}</span>` : "";
+    if(spans.length) cxc.push(`<span class="cmd">color</span> <span class="arg">#1/${cxChain}:${chimeraJoin(spans)}</span> ${d.color.toLowerCase()}${labelNote}`);
+  });
+  $("cxc").innerHTML = cxc.join("\n");
+}
+
+function render(){ renderRows(); renderTrack(); renderOutputs(); }
+
+// ---- events ----
+$("addbtn").onclick = ()=>{
+  const p = PALETTE[domains.length % PALETTE.length];
+  const lastChain = domains.length ? (domains[domains.length-1].chain||"A") : "A";
+  domains.push({label:"", chain:lastChain, name:p[0], color:p[1], ranges:""});
+  selected = domains.length-1; render();
+};
+$("seqlen").addEventListener("input", renderTrack);
+function setScale(mode){
+  scaleMode = mode;
+  $("scaleSqrt").classList.toggle("active", mode==="sqrt");
+  $("scaleLinear").classList.toggle("active", mode==="linear");
+  renderTrack();
+}
+$("scaleSqrt").onclick = ()=> setScale("sqrt");
+$("scaleLinear").onclick = ()=> setScale("linear");
+$("exportSvg").onclick = ()=> exportSVG();
+$("exportPng").onclick = ()=> exportPNG(3);
+setScale("sqrt");   // default
+$("objname").addEventListener("input", renderOutputs);
+
+document.querySelectorAll(".copy").forEach(btn=>{
+  btn.onclick = ()=>{
+    const el = $(btn.dataset.target);
+    const text = el.innerText;
+    navigator.clipboard.writeText(text).then(()=>{
+      const o = btn.textContent; btn.textContent="Copied"; btn.classList.add("done");
+      setTimeout(()=>{ btn.textContent=o; btn.classList.remove("done"); },1200);
+    });
+  };
+});
+
+// ---- ColorBrewer palettes (RGB hex) ----
+const BREWER = {
+  qualitative: {
+    "Set1":   ["#e41a1c","#377eb8","#4daf4a","#984ea3","#ff7f00","#ffff33","#a65628","#f781bf","#999999"],
+    "Set2":   ["#66c2a5","#fc8d62","#8da0cb","#e78ac3","#a6d854","#ffd92f","#e5c494","#b3b3b3"],
+    "Set3":   ["#8dd3c7","#ffffb3","#bebada","#fb8072","#80b1d3","#fdb462","#b3de69","#fccde5","#bc80bd","#ccebc5"],
+    "Dark2":  ["#1b9e77","#d95f02","#7570b3","#e7298a","#66a61e","#e6ab02","#a6761d","#666666"],
+    "Paired": ["#a6cee3","#1f78b4","#b2df8a","#33a02c","#fb9a99","#e31a1c","#fdbf6f","#ff7f00","#cab2d6","#6a3d9a"],
+    "Accent": ["#7fc97f","#beaed4","#fdc086","#ffff99","#386cb0","#f0027f","#bf5b17","#666666"],
+    "Pastel1":["#fbb4ae","#b3cde3","#ccebc5","#decbe4","#fed9a6","#ffffcc","#e5d8bd","#fddaec"],
+    "Tableau":["#4e79a7","#f28e2b","#e15759","#76b7b2","#59a14f","#edc948","#b07aa1","#ff9da7","#9c755f","#bab0ac"],
+    "Okabe-Ito":["#e69f00","#56b4e9","#009e73","#f0e442","#0072b2","#d55e00","#cc79a7","#000000"],
+  },
+  sequential: {
+    "Blues":   ["#f7fbff","#deebf7","#c6dbef","#9ecae1","#6baed6","#4292c6","#2171b5","#08519c","#08306b"],
+    "Greens":  ["#f7fcf5","#e5f5e0","#c7e9c0","#a1d99b","#74c476","#41ab5d","#238b45","#006d2c","#00441b"],
+    "Oranges": ["#fff5eb","#fee6ce","#fdd0a2","#fdae6b","#fd8d3c","#f16913","#d94801","#a63603","#7f2704"],
+    "Purples": ["#fcfbfd","#efedf5","#dadaeb","#bcbddc","#9e9ac8","#807dba","#6a51a3","#54278f","#3f007d"],
+    "Reds":    ["#fff5f0","#fee0d2","#fcbba1","#fc9272","#fb6a4a","#ef3b2c","#cb181d","#a50f15","#67000d"],
+    "Viridis": ["#440154","#482878","#3e4a89","#31688e","#26828e","#1f9e89","#35b779","#6ece58","#b5de2b","#fde725"],
+    "Magma":   ["#000004","#1c1044","#4f127b","#812581","#b5367a","#e55064","#fb8761","#fec287","#fcfdbf"],
+    "Cividis": ["#00204d","#00336f","#39486b","#575d6d","#707173","#8a8779","#a69d75","#c4b56c","#e4cf5b","#ffea46"],
+    "YlGnBu":  ["#ffffd9","#edf8b1","#c7e9b4","#7fcdbb","#41b6c4","#1d91c0","#225ea8","#253494","#081d58"],
+    "YlOrRd":  ["#ffffcc","#ffeda0","#fed976","#feb24c","#fd8d3c","#fc4e2a","#e31a1c","#bd0026","#800026"],
+  },
+  diverging: {
+    "RdBu":    ["#67001f","#b2182b","#d6604d","#f4a582","#fddbc7","#f7f7f7","#d1e5f0","#92c5de","#4393c3","#2166ac","#053061"],
+    "BrBG":    ["#543005","#8c510a","#bf812d","#dfc27d","#f6e8c3","#f5f5f5","#c7eae5","#80cdc1","#35978f","#01665e","#003c30"],
+    "PiYG":    ["#8e0152","#c51b7d","#de77ae","#f1b6da","#fde0ef","#f7f7f7","#e6f5d0","#b8e186","#7fbc41","#4d9221","#276419"],
+    "Spectral":["#9e0142","#d53e4f","#f46d43","#fdae61","#fee08b","#ffffbf","#e6f598","#abdda4","#66c2a5","#3288bd","#5e4fa2"],
+    "RdYlBu":  ["#a50026","#d73027","#f46d43","#fdae61","#fee090","#ffffbf","#e0f3f8","#abd9e9","#74add1","#4575b4","#313695"],
+  }
+};
+
+function sampleColors(arr, n){
+  if(n<=0) return [];
+  if(n===1) return [arr[Math.floor(arr.length/2)]];
+  const out=[]; for(let i=0;i<n;i++){ out.push(arr[Math.round(i*(arr.length-1)/(n-1))]); } return out;
+}
+
+// ---- save / load JSON ----
+function currentConfig(){
+  return { version:2, object:$("objname").value,
+           length:+$("seqlen").value,
+           domains: domains.map(d=>({label:d.label||"",chain:d.chain||"A",name:d.name,color:d.color,ranges:d.ranges})) };
+}
+$("saveBtn").onclick = ()=>{
+  const blob = new Blob([JSON.stringify(currentConfig(),null,2)],{type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = (($("objname").value||"scheme").trim()||"scheme")+"_colors.json";
+  a.click(); URL.revokeObjectURL(a.href);
+  showBanner("ok","Saved <b>"+a.download+"</b> — load it back here anytime to keep editing.");
+};
+$("loadBtn").onclick = ()=> $("loadFile").click();
+$("loadFile").onchange = e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = ()=>{
+    try{
+      const cfg = JSON.parse(r.result);
+      if(!cfg.domains || !Array.isArray(cfg.domains)) throw new Error("no domains array");
+      domains = cfg.domains.map(d=>({label:d.label||"",chain:d.chain||"A",name:d.name||"",color:normHex(d.color)||"#888888",ranges:d.ranges||""}));
+      if(cfg.object!=null) $("objname").value = cfg.object;
+      if(cfg.length) $("seqlen").value = cfg.length;
+      selected=-1; render();
+      showBanner("ok","Loaded <b>"+domains.length+"</b> domains from "+f.name+".");
+    }catch(err){ showBanner("err","Couldn't read that file as a saved scheme: "+err.message); }
+    e.target.value="";
+  };
+  r.readAsText(f);
+};
+
+// ---- normalize a color token to #rrggbb ----
+function normHex(c){
+  if(!c) return null;
+  c = (""+c).trim();
+  let m = c.match(/^#?([0-9a-fA-F]{6})$/);
+  if(m) return "#"+m[1].toLowerCase();
+  m = c.match(/^#?([0-9a-fA-F]{3})$/);
+  if(m){ const h=m[1]; return "#"+h[0]+h[0]+h[1]+h[1]+h[2]+h[2]; }
+  m = c.match(/^0x([0-9a-fA-F]{6})$/);
+  if(m) return "#"+m[1].toLowerCase();
+  m = c.match(/^\[?\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)\s*\]?$/);
+  if(m){
+    const to=v=>{ let n=parseFloat(v); n = n<=1 ? Math.round(n*255) : Math.round(n); return Math.max(0,Math.min(255,n)).toString(16).padStart(2,"0"); };
+    return "#"+to(m[1])+to(m[2])+to(m[3]);
+  }
+  return null;
+}
+
+// ---- import existing scripts (best-effort) ----
+function importScript(text){
+  const lines = text.split(/\r?\n/);
+  const colorDefs = {};
+  const found = [];
+  const byKey = {};
+  const skipped = [];
+  let detected = null;
+  const pushDomain = (cname, hex, ranges, label, chain)=>{
+    const key = (hex||"")+"|"+(cname||"")+"|"+(label||"")+"|"+(chain||"A");
+    if(byKey[key]){ byKey[key].ranges += (byKey[key].ranges?", ":"")+ranges; }
+    else { const d={label:label||"",chain:chain||"A",name:cname||"",color:hex||"#888888",ranges:ranges}; byKey[key]=d; found.push(d); }
+  };
+  lines.forEach((raw)=>{
+    // A trailing comment is "<space># text" — but ChimeraX uses # in model specs (#1) and
+    // hex (#ffd700), so only treat # as a comment when followed by a space or when the line
+    // has no command-relevant # token. Match the LAST " # ..." occurrence.
+    const cmtM = raw.match(/\s#\s+(.+?)\s*$/);
+    const trailingLabel = cmtM ? cmtM[1] : "";
+    const clean = raw.replace(/^\s*#\s.*$/,"").replace(/\s#\s.*$/,"").trim();
+    if(!clean) return;
+
+    // PyMOL set_color name, [r,g,b]
+    let m = clean.match(/^set_color\s+([A-Za-z0-9_]+)\s*,\s*\[?\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)\s*\]?/i);
+    if(m){ colorDefs[m[1]] = normHex(m[2]+","+m[3]+","+m[4]); detected="pymol"; return; }
+
+    // PyMOL color NAME, ... chain A+B ... resi 1-10+20-30
+    m = clean.match(/^color\s+([A-Za-z0-9_#x]+)\s*,\s*(.+)$/i);
+    if(m){
+      const cname = m[1]; const sel = m[2];
+      const resiM = sel.match(/resi\s+([0-9+\-,\s]+)/i);
+      if(resiM){
+        detected="pymol";
+        const ranges = resiM[1].trim().replace(/\s+/g,"").replace(/\+/g,", ");
+        const chM = sel.match(/chain\s+([A-Za-z0-9+,\s]+?)(?:\s+and\b|\s*$)/i);
+        let chain = "A";
+        if(chM){ const cs = parseChains(chM[1]); chain = cs.join(",");}
+        const hex = colorDefs[cname] || normHex(cname) || "#888888";
+        pushDomain(colorDefs[cname]?cname:"", hex, ranges, trailingLabel, chain);
+        return;
+      }
+    }
+
+    // ChimeraX color #1/A,B:1-10,20-30 #hex
+    m = clean.match(/^color\s+(\S*\/[A-Za-z0-9,]+:[0-9,\-\s]+)\s+(\S+)\s*$/i);
+    if(m){
+      detected="chimerax";
+      const spec=m[1], col=m[2];
+      const resiM = spec.match(/:([0-9,\-\s]+)/);
+      const chainM = spec.match(/\/([A-Za-z0-9,]+):/);
+      if(resiM){
+        const ranges = resiM[1].replace(/\s+/g,"");
+        let chain = "A";
+        if(chainM){ chain = parseChains(chainM[1]).join(",");}
+        pushDomain(col.startsWith("#")?"":col, normHex(col)||"#888888", ranges, trailingLabel, chain);
+        return;
+      }
+    }
+    if(/^(set_color|color)\b/i.test(clean)) skipped.push(clean);
+  });
+  return { found, skipped, detected };
+}
+$("importBtn").onclick = ()=> $("importFile").click();
+$("importFile").onchange = e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = ()=>{
+    const res = importScript(r.result);
+    if(res.found.length===0){
+      showBanner("err","No colorable domains recognized in that file. The importer reads this tool's own PyMOL/ChimeraX output and close variants; heavily customized scripts may not parse.");
+    } else {
+      domains = res.found.map(d=>({label:d.label||"",chain:d.chain||"A",name:d.name,color:d.color,ranges:d.ranges}));
+      selected=-1; render();
+      let msg = "Imported <b>"+domains.length+"</b> domains ("+(res.detected||"unknown")+" syntax).";
+      if(res.skipped.length){
+        msg += " <b>"+res.skipped.length+"</b> line(s) looked like commands but couldn't be parsed and were skipped:<ul>"+
+               res.skipped.slice(0,6).map(s=>"<li>"+escapeHtml(s)+"</li>").join("")+
+               (res.skipped.length>6?"<li>… and more</li>":"")+"</ul>Verify those by hand.";
+        showBanner("warn", msg);
+      } else {
+        showBanner("ok", msg+" Names are generic where the script used hex directly — rename freely.");
+      }
+    }
+    e.target.value="";
+  };
+  r.readAsText(f);
+};
+function escapeHtml(s){ return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+// ---- color scheme modal ----
+let schemeFamily = "qualitative";
+$("schemeBtn").onclick = ()=>{ $("modalTitle").textContent="Color scheme"; renderSchemeModal(); $("modal").hidden=false; };
+$("modalX").onclick = ()=> $("modal").hidden = true;
+$("clearBtn").onclick = ()=>{
+  if(domains.length && !confirm("Clear all "+domains.length+" domains? This can't be undone (save first if you want to keep them).")) return;
+  domains = []; selected = -1; render();
+  showBanner("ok","Table cleared. Add a domain, load a saved scheme, or read a script to begin.");
+};
+$("modal").onclick = e=>{ if(e.target.id==="modal") $("modal").hidden=true; };
+
+function renderSchemeModal(){
+  const fams = ["qualitative","sequential","diverging"];
+  if(!BREWER[schemeFamily]) schemeFamily = "qualitative";
+  const hints = {
+    qualitative:"Distinct colors for categorical domains.",
+    sequential:"Ordered light→dark ramps for graded regions.",
+    diverging:"Two-sided scales with a neutral midpoint."
+  };
+  let html = `<p class="modal-hint">${hints[schemeFamily]} Pick a palette, then recolor your current domains in order or replace the table with one domain per swatch.</p>`;
+  html += `<div class="scheme-tabs">`+fams.map(f=>`<button class="scheme-tab ${f===schemeFamily?'active':''}" data-fam="${f}">${f}</button>`).join("")+`</div>`;
+  const set = BREWER[schemeFamily];
+  for(const name in set){
+    const bar = set[name].map(c=>`<span style="background:${c}"></span>`).join("");
+    html += `<div class="scheme-row" data-name="${name}"><span class="scheme-name">${escapeHtml(name)}</span><div class="scheme-bar">${bar}</div></div>`;
+  }
+  $("modalBody").innerHTML = html;
+  $("modalBody").querySelectorAll(".scheme-tab").forEach(t=>{ t.onclick=()=>{ schemeFamily=t.dataset.fam; renderSchemeModal(); }; });
+  $("modalBody").querySelectorAll(".scheme-row").forEach(row=>{ row.onclick=()=> chooseApplyMode(set[row.dataset.name], row.dataset.name); });
+}
+function chooseApplyMode(colors, name){
+  $("modalTitle").textContent = name;
+  const n = domains.length;
+  $("modalBody").innerHTML = `
+    <p class="modal-hint">Apply <b>${escapeHtml(name)}</b> — ${colors.length} colors.</p>
+    <div class="modal-actions">
+      <button class="apply-mode" id="modeRecolor">Recolor my ${n} domains in order</button>
+      <button class="apply-mode" id="modeReplace">Replace table — one domain per color</button>
+    </div>
+    <p class="modal-hint" style="margin-top:14px">
+      Recolor keeps every residue range, chain, and label and only swaps colors${n>colors.length?` (palette has fewer colors than you have domains, so colors will repeat)`:``}.
+      Replace discards the current table and builds ${colors.length} empty domains to fill in.</p>
+    <div class="modal-actions" style="margin-top:6px"><button class="apply-mode" id="modeBack">← back to palettes</button></div>`;
+  $("modeRecolor").onclick = ()=>{
+    const picked = (schemeFamily==="qualitative" && n<=colors.length) ? colors.slice(0,n) : sampleColors(colors,n);
+    domains.forEach((d,i)=> d.color = picked[i % picked.length]);
+    $("modal").hidden=true; render();
+    showBanner("ok","Recolored "+n+" domains with <b>"+escapeHtml(name)+"</b>.");
+  };
+  $("modeReplace").onclick = ()=>{
+    domains = colors.map((c,i)=>({label:"", chain:"A", name:name+"_"+(i+1), color:c, ranges:""}));
+    selected=-1; $("modal").hidden=true; render();
+    showBanner("ok","Built "+colors.length+" domains from <b>"+escapeHtml(name)+"</b>. Add residue ranges and chains.");
+  };
+  $("modeBack").onclick = ()=>{ $("modalTitle").textContent="Color scheme"; renderSchemeModal(); };
+}
+
+// ---- banner ----
+let bannerTimer=null;
+function showBanner(kind, html){
+  const b = $("banner"); b.className="banner "+kind; b.innerHTML=html; b.hidden=false;
+  if(bannerTimer) clearTimeout(bannerTimer);
+  if(kind==="ok") bannerTimer=setTimeout(()=>{ b.hidden=true; }, 5000);
+}
+
+render();
+</script>
+</body>
+</html>

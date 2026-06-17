@@ -1,0 +1,8 @@
+# Domain Painter app — Python dependencies
+# Install everything with:   pip install -r requirements.txt
+#
+# Flask is the only external package. Everything else the app uses
+# (json, os, sys, threading, webbrowser, pathlib) is part of Python's
+# standard library and needs no installation.
+
+Flask>=3.0
