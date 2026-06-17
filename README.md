@@ -5,8 +5,8 @@ Generate PyMOL and ChimeraX coloring scripts with user-defined or premade colori
 
 Protein Painter turns protein domain specifications into ready-to-paste coloring scripts for PyMOL and ChimeraX. There's two forms:
 
-- **`protein_painter.html`** — the no-install version; Double-click to open in your web browser. The only limitation: custom color schemes you save aren't remembered after you close the browser tab (you can save/load them as `.json` files by hand though).
-- **`protein_painter_app.py`** — the app version. Needs Python (below), but adds custom color schemes that can persist after the browser tab is closed. 
+- **`Protein_painter.html`** — the no-install version; Double-click to open in your web browser. The only limitation: custom color schemes you save aren't remembered after you close the browser tab (you can save/load them as `.json` files by hand though).
+- **`Protein_painter_app.py`** — the app version. Needs Python (below), but adds custom color schemes that can persist after the browser tab is closed. 
 If you just want to use the tool and don't care about permanently saved schemes, use the HTML file and ignore the rest of this guide.
 
 ---
@@ -64,9 +64,9 @@ You only need to do this once- after that, the package stays on your computer.
 
 ## Step 3 — Download and Run the app
 
-Download the protein_painter_app.py file from this page and save it somewhere. 
+Download the Protein_painter_app.py file from this page and save it somewhere. 
 
-Then navigate the terminal to the folder where you saved `protein_painter_app.py`. The `cd` ("change directory") command does this. For example, if the file is in your Downloads folder (not a recommended long-term solution):
+Then navigate the terminal to the folder where you saved `Protein_painter_app.py`. The `cd` ("change directory") command does this. For example, if the file is in your Downloads folder (not a recommended long-term solution):
 
 ```
 cd Downloads
@@ -77,7 +77,7 @@ cd Downloads
 Then start the app:
 
 ```
-python protein_painter_app.py
+python Protein_painter_app.py
 ```
 
 (Use `python3` if that's what your system uses.)
