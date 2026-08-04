@@ -1,6 +1,7 @@
 # Protein Painter
 Generate PyMOL and ChimeraX coloring scripts with user-defined or premade coloring schemes.
 
+<img width="1037" height="1422" alt="Screenshot_2026-08-04_16-23-04" src="https://github.com/user-attachments/assets/afeacb1d-8c0c-4f33-9b0a-18a2faff0508" />
 
 
 Protein Painter turns protein domain specifications into ready-to-paste coloring scripts for PyMOL and ChimeraX. There's two forms:
